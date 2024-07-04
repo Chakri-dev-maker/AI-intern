@@ -1,0 +1,94 @@
+_schema-version: "3.1"
+ID: AI-RAG-Intern
+description: A simple CAP project.
+version: 1.0.0
+modules:
+- name: AI-RAG-Intern-srv
+  type: nodejs
+  path: gen/srv
+  requires:
+  - name: AI-RAG-Intern-auth
+  - name: AI-RAG-Intern-db
+  provides:
+  - name: srv-api
+    properties:
+      srv-url: ${default-url}
+  parameters:
+    buildpack: nodejs_buildpack
+    readiness-health-check-http-endpoint: /health
+    readiness-health-check-type: http
+  build-parameters:
+    builder: npm
+- name: AI-RAG-Intern-db-deployer
+  type: hdb
+  path: gen/db
+  requires:
+  - name: AI-RAG-Intern-db
+  parameters:
+    buildpack: nodejs_buildpack
+- name: AI-RAG-Intern
+  type: approuter.nodejs
+  path: app/router
+  requires:
+  - name: srv-api
+    group: destinations
+    properties:
+      forwardAuthToken: true
+      name: srv-api
+      url: ~{srv-url}
+  - name: AI-RAG-Intern-auth
+
+- name: AI-RAG-Intern-app-content
+  type: com.sap.application.content
+  path: .
+  requires:
+  - name: AI-RAG-Intern-repo-host
+    parameters:
+      content-target: true
+  build-parameters:
+    build-result: resources
+    requires:
+    - artifacts:
+      - comqilragsettingssettings.zip
+      name: comqilragsettingssettings
+      target-path: resources/
+- name: comqilragsettingssettings
+  type: html5
+  path: app/settings
+  build-parameters:
+    build-result: dist
+    builder: custom
+    commands:
+    - npm install
+    - npm run build:cf
+    supported-platforms: []
+resources:
+- name: AI-RAG-Intern-auth
+  type: org.cloudfoundry.managed-service
+  parameters:
+    config:
+      tenant-mode: dedicated
+      xsappname: AI-RAG-Intern-${org}-${space}
+    path: ./xs-security.json
+    service: xsuaa
+    service-plan: application
+- name: AI-RAG-Intern-db
+  type: com.sap.xs.hdi-container
+  parameters:
+    service: hana
+    service-plan: hdi-shared
+- name: AI-RAG-Intern-repo-host
+  type: org.cloudfoundry.managed-service
+  parameters:
+    service: html5-apps-repo
+    service-name: AI-RAG-Intern-html5-srv
+    service-plan: app-host
+parameters:
+  deploy_mode: html5-repo
+  enable-parallel-deployments: true
+build-parameters:
+  before-all:
+  - builder: custom
+    commands:
+    - npm ci
+    - npx cds build --production
